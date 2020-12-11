@@ -1,0 +1,1152 @@
+---
+title: |
+  | Replication Material 
+  | 
+  | Not Just Money: Unequal responsiveness in egalitarian democracies
+  |
+  | Journal of European Public Policy 2020
+  |
+author: "Lea Elsässer, Svenja Hense, Armin Schäfer"
+date: "July 2020"
+output: 
+  bookdown::html_document2:
+    fig_caption: yes
+    number_sections: false
+pagetitle: Not Just Money
+fontsize: 12
+---
+
+In this file, we reproduce the analyses for the article [Not just money: Unequal responsiveness in egalitarian democracies](DOI: 10.1080/13501763.2020.1801804) published with the Journal or European Public Policy. The article is based on an original dataset---"Responsiveness and Public Opinion in Germany” (ResPOG)---, which includes information on public opinion and respective political decisions for 746 policy proposals in Germany. We selected questions on reform proposals from two German representative surveys polled for different media: *Politbarometer* and *DeutschlandTrend*. The former covers the period from 1980 to 2013 and the latter from 1998 to 2013.
+
+```{r setup, include=FALSE}
+
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
+
+```
+
+```{r, warning=FALSE, message=FALSE}
+
+if (!require("pacman")) install.packages("pacman")
+
+pacman::p_load(tidyverse, openxlsx, broom, dplyr, ggpubr, skimr, haven, bookdown,
+               summarytools, kableExtra, gt, margins, modelsummary, patchwork,
+               ggeffects, here)
+
+respog <- read_dta(here("data", "data_respog.dta"))
+
+# Group size over time (education and occupations)
+groupsize <- read.xlsx(here("data", "groupsizes.xlsx"))
+
+# Income percentiles per occupational group (Based on yearly Politbarometer data)
+inc_occ <- read.xlsx(here("data", "inoccup.xlsx"))
+
+# Prepare and label variables for further analyses
+# Labels for coalition governments
+respog$coalition <- factor(respog$coalition,
+                           levels = c(1,2,3,4),
+                           labels = c("CDU/CSU-FDP", 
+                                      "SPD-Greens", 
+                                      "CDU/CSU-SPD",
+                                      "SPD-FDP"))
+
+# policy field
+respog$field <- factor(respog$field,
+levels = c(1,2,3,4,5,6,7),
+labels = c("Foreign Policy", "Economics & Finance", 
+           "Labor market & Social policy", 
+           "Environment", "Migration", 
+           "Society", "Europe"))
+
+# Turn respons4 into a factor and label it
+respog$imp4 <- factor(respog$implement4,
+                           levels = c(0,1),
+                           labels = c("not implemented", 
+                                      "implemented"))
+
+# Labels for dimension according to Beramendi et al. (2015)
+respog$dim <- factor(respog$dimension,
+                          levels = c(0,1),
+                          labels = c("State vs. market",
+                                     "Particularism vs. universalism"))
+```
+
+
+# Main part of the paper
+
+In what follows, we reproduce all the figures that appear in the printed version of the paper. Additional graphs and tables can be found below in the [Appendix], which is only available online.
+
+## Figure 1
+
+To give readers a sense of our data, *Figure 1* shows two scatter plots, each comparing the opinions of a ‘lower’ and an ‘upper’ group within one category of social stratification. As we can see, the degree of support for policy change correlates overall but, at the same time, there is considerable variation. The plots also show that only in a subset of cases the two respective groups have opposing interests, i.e. a majority in one group favors change whereas the majority in the other opposes it. 
+
+```{r fig1, fig.width=10, fig.height=5, fig.cap="Correlation between policy preferences."}
+
+fig1a <- ggplot(data = respog, aes(x = unskilled, 
+                          y = business, 
+                          shape = as.factor(oppo_wrk_busi)))+
+  geom_hline(yintercept=.5, color="grey60")+
+  geom_vline(xintercept=.5, color="grey60")+
+  geom_point(size=2)+
+  scale_shape_manual(values=c(16, 1))+
+  scale_y_continuous(labels=scales::percent)+
+  scale_x_continuous(labels=scales::percent)+
+  labs(x = "Favoring change: unskilled workers",
+       y = "Favoring change: buisness owners")+
+  theme_minimal()+
+  theme(axis.text = element_text(color="black"),
+        legend.position="none")
+
+fig1b <- ggplot(data = respog, aes(x = edulow, 
+                          y = eduhigh, 
+                          shape = as.factor(oppo_edu)))+
+  geom_hline(yintercept=.5, color="grey60")+
+  geom_vline(xintercept=.5, color="grey60")+
+  geom_point(size=2)+
+  scale_shape_manual(values=c(16, 1))+
+  scale_y_continuous(labels=scales::percent)+
+  scale_x_continuous(labels=scales::percent)+
+  labs(x = "Favoring change: low education",
+       y = "Favoring change: high education")+
+  theme_minimal()+
+  theme(axis.text = element_text(color="black"),
+        legend.position="none")
+
+fig1a + fig1b
+
+```
+
+
+## Figure 2
+
+*Figure 2* compares the distribution of opinion differences between educational and occupational groups across the two policy dimensions. Opinion differences on the economic policy dimension are larger between lower and upper occupational groups than between those with low and high formal education. When it comes to cultural issues, the distribution of opinion differences is similar across the two categories, although opinion differences are somewhat larger between educational groups.
+
+```{r fig2, fig.width=6, fig.cap="Opinion differences in two policy dimensions, by occupation and education"}
+
+ggplot(data = subset(respog, dim!="NA"))+
+  geom_histogram(aes(x=diff_edu, 
+                     fill="Low vs. high education"), 
+                 bins=20, color="black")+
+  geom_histogram(aes(x=diff_class, 
+                     fill="Unskilled workers vs. business owners"), 
+               bins=20, alpha=.5)+
+  scale_fill_manual(values=c("white",
+                             "grey40"))+
+  scale_x_continuous(labels= scales::percent)+
+  labs(x = "\n Opinion differences",
+       y = "Density")+
+  theme_minimal()+
+  theme(legend.title=element_blank(),
+        legend.position="top",
+        axis.text = element_text(color="black"))+
+  facet_wrap(~dim)
+
+```
+
+## Figure 3
+
+The following analyses use the respective degree of support within different subgroups of respondents as the main explanatory variables. The dependent variable captures if the respective proposal was adopted within four years after the question was asked. *Figure 3* shows the coefficients of different logit models run independently of each other. Each model includes the share of support within one occupational or educational group. Full models are documented in [Table A-4] and [Table A-5] below. In addition, [Table A-6] reports the results for income groups, which are based on fewer observations, though.
+
+```{r fig3, fig.width=8, fig.cap="Regression coefficients that explain policy change"}
+
+# Social class
+
+m1 <- glm(implement4~ unskilled, data=respog,family=binomial())
+m2 <- glm(implement4~ skilled, data=respog,family=binomial())
+m3 <- glm(implement4~ emplow, data=respog,family=binomial())
+m4 <- glm(implement4~ emphigh, data=respog,family=binomial())
+m5 <- glm(implement4~ civilserv, data=respog,family=binomial())
+m6 <- glm(implement4~ business, data=respog,family=binomial())
+
+m1 <- tidy(m1, conf.int = TRUE) %>% filter(term == "unskilled") %>%
+  mutate(model = "Unskilled\nworkers")
+m2 <- tidy(m2, conf.int = TRUE) %>% filter(term == "skilled") %>%
+  mutate(model = "Skilled\nWorkers")
+m3 <- tidy(m3, conf.int = TRUE) %>% filter(term == "emplow") %>%
+  mutate(model = "Lower-grade\nemployees")
+m4 <- tidy(m4, conf.int = TRUE) %>% filter(term == "emphigh") %>%
+  mutate(model = "Higher-grade\nemployees")
+m5 <- tidy(m5, conf.int = TRUE) %>% filter(term == "civilserv") %>%
+  mutate(model = "Civil\nservants")
+m6 <- tidy(m6, conf.int = TRUE) %>% filter(term == "business") %>%
+  mutate(model = "Business\nowners")
+
+all_models <- bind_rows(m1, m2, m3, m4, m5, m6)
+all_models <- all_models %>% mutate(id = row_number())
+all_models$id <- as.factor(all_models$id)
+all_models$id <- factor(all_models$id,
+levels = c(1,2,3,4,5,6),
+labels = c("Unskilled\nworkers", "Skilled\nworkers", "Lower-grade\nemployees", "Higher-grade\nemployees", "Civil\nservants", "Business\nowners")) 
+
+occup <- all_models %>%
+  mutate(model = fct_reorder(id, estimate)) %>%
+  ggplot()+
+  geom_vline(xintercept=0, color="grey60")+
+  geom_point(aes(x=estimate, y=model), size=2)+
+  geom_errorbarh(aes(y=model, 
+                     xmin=conf.low, 
+                     xmax=conf.high,
+                     height = 0))+
+  labs(x="", y="Occupations\n")+
+  theme_minimal()+
+  theme(axis.text = element_text(color = "black"))+
+  xlim(-1,3)
+
+# Education
+
+m1 <- glm(implement4~ edulow, data=respog,family=binomial())
+m2 <- glm(implement4~ edumed, data=respog,family=binomial())
+m3 <- glm(implement4~ eduhigh, data=respog,family=binomial())
+
+m1 <- tidy(m1, conf.int = TRUE) %>% filter(term == "edulow") %>%
+  mutate(model = "Low")
+m2 <- tidy(m2, conf.int = TRUE) %>% filter(term == "edumed") %>%
+  mutate(model = "Medium")
+m3 <- tidy(m3, conf.int = TRUE) %>% filter(term == "eduhigh") %>%
+  mutate(model = "High")
+
+all_models <- bind_rows(m1, m2, m3)
+all_models <- all_models %>% mutate(id = row_number())
+all_models$id <- as.factor(all_models$id)
+all_models$id <- factor(all_models$id,
+levels = c(1,2,3),
+labels = c("Low", "Medium", "High")) 
+
+
+educ <- all_models %>%
+  mutate(model = fct_reorder(id, estimate)) %>%
+  ggplot()+
+  geom_vline(xintercept=0, color="grey60")+
+  geom_point(aes(x=estimate, y=model), size=2)+
+  geom_errorbarh(aes(y=model, 
+                     xmin=conf.low, 
+                     xmax=conf.high,
+                     height = 0))+
+  labs(x="", y="Level of education\n")+
+  theme_minimal()+
+  theme(axis.text = element_text(color = "black"))+
+  xlim(-1,3)
+
+occup + educ
+
+```
+
+## Figure 4  
+
+To see how the size of opinion differences affects policy responsiveness, we interact the support for policy change of one group with the size of the opinion differences towards another group. Figure 4 shows the marginal effect of the preferences for policy change for four different groups conditioned on the size of opinion differences. Unskilled workers’ support for policy change only correlates positively with policy change if they agree with higher social classes. Once opinion differences increase beyond 10 percentage points, the effect becomes first insignificant and, with large differences, even negative. The more strongly workers disagree with business owners (and better-off groups in general), the more unlikely it becomes that the Bundestag implements their preferences. In contrast, the coefficient for business owners is always positive, even though it is imprecisely estimated with large opinion differences and fewer cases (upper right-hand panel in Figure 4). We find a similar pattern for education. The degree of support for policy change of those with lower levels of education has no significant impact on policy change—no matter how strongly their preferences coincide or diverge from those with higher levels of education. 
+
+```{r fig4, fig.cap="Marginal effect of preferences on policy change", fig.width = 10}
+
+interact1 <- glm(implement4~ unskilled * diff_class, data = respog, family=binomial(link="logit"))
+interact2 <- glm(implement4~ business * diff_class, data = respog, family=binomial(link="logit"))
+interact3 <- glm(implement4~ edulow * diff_edu, data = respog, family=binomial(link="logit"))
+interact4 <- glm(implement4~ eduhigh * diff_edu, data = respog, family=binomial(link="logit"))
+
+cdat1 <- cplot(interact1,"diff_class", "unskilled",  what = "effect", draw = FALSE)
+cdat2 <- cplot(interact2,"diff_class", "business",  what = "effect", draw = FALSE)
+cdat3 <- cplot(interact3,"diff_edu", "edulow",  what = "effect", draw = FALSE)
+cdat4 <- cplot(interact4,"diff_edu", "eduhigh",  what = "effect", draw = FALSE)
+
+
+p1 <- ggplot(data = subset(cdat1, xvals<=0.4),
+       aes(x = xvals)) +
+  geom_hline(yintercept = 0, color="grey60")+
+  geom_ribbon(aes(x = xvals, y = yvals,
+                   ymin = lower, ymax = upper),
+               fill="grey80",
+              alpha=0.6)+
+    geom_line(aes(y = yvals)) +
+  geom_line(aes(y = upper), linetype = 2) +
+  geom_line(aes(y = lower), linetype = 2) +
+  xlim(0,0.4)+
+  labs(title = "Unskilled workers",
+       x = "Opinion difference to business owners",
+       y = "Marginal effect")+
+  theme_minimal()+
+  theme(title = element_text(size=10),
+        axis.text = element_text(color = "black"),
+        axis.title = element_text(size=8))
+
+p2 <- ggplot(data = subset(cdat2, xvals<=0.4),
+       aes(x = xvals)) +
+  geom_hline(yintercept = 0, color="grey60")+
+  geom_ribbon(aes(x = xvals, y = yvals,
+                   ymin = lower, ymax = upper),
+               fill="grey80",
+              alpha=0.6)+
+  geom_line(aes(y = yvals)) +
+  geom_line(aes(y = upper), linetype = 2) +
+  geom_line(aes(y = lower), linetype = 2) +
+  xlim(0,0.4)+
+  labs(title = "Business owners",
+       x = "Opinion difference to workers",
+       y = "Marginal effect")+
+  theme_minimal()+
+  theme(title = element_text(size=10),
+        axis.text = element_text(color = "black"),
+        axis.title = element_text(size=8))
+
+
+p3 <- ggplot(data = subset(cdat3, xvals<=0.4),
+       aes(x = xvals)) +
+  geom_hline(yintercept = 0, color="grey60")+
+  geom_ribbon(aes(x = xvals, y = yvals,
+                   ymin = lower, ymax = upper),
+               fill="grey80",
+              alpha=0.6)+
+  geom_line(aes(y = yvals)) +
+  geom_line(aes(y = upper), linetype = 2) +
+  geom_line(aes(y = lower), linetype = 2) +
+  ylim(-1,1.5)+
+  labs(title = "Low education",
+       x = "Opinion difference to high education",
+       y = "Marginal effect")+
+  theme_minimal()+
+  theme(axis.title = element_text(size=8),
+        title = element_text(size=10))
+
+p4 <- ggplot(data = subset(cdat4, xvals<=0.4),
+       aes(x = xvals)) +
+  geom_hline(yintercept = 0, color="grey60")+
+  geom_ribbon(aes(x = xvals, y = yvals,
+                   ymin = lower, ymax = upper),
+               fill="grey80",
+              alpha=0.6)+
+  geom_line(aes(y = yvals)) +
+  geom_line(aes(y = upper), linetype = 2) +
+  geom_line(aes(y = lower), linetype = 2) +
+  ylim(-1,1.5)+
+  labs(title = "High education",
+       x = "Opinion difference to low education",
+       y = "Marginal effect")+
+  theme_minimal()+
+  theme(axis.title = element_text(size=8),
+        title = element_text(size=10))
+
+(p1 + p2)/(p3 + p4)
+
+```
+
+## Figure 5
+
+In a next step, we analyze whether the degree of responsiveness depends on a particular policy dimension or on the composition of parties in government. To this end, we first split our sample and run separate regressions for proposals assigned to the state-market dimension and for those assigned to the cultural dimension. As can be seen from Figure 5, we find a similar pattern of representational inequality in both policy dimensions.
+
+```{r fig5, fig.width=10, fig.cap="Responsiveness in two policy dimensions", message=FALSE}
+
+# Dimension = 1 - economic axis
+
+m1 <- glm(implement4~ unskilled, data=subset(respog, dimension==0),family=binomial())
+m2 <- glm(implement4~ skilled, data=subset(respog, dimension==0),family=binomial())
+m3 <- glm(implement4~ emplow, data=subset(respog, dimension==0),family=binomial())
+m4 <- glm(implement4~ emphigh, data=subset(respog, dimension==0),family=binomial())
+m5 <- glm(implement4~ civilserv, data=subset(respog, dimension==0),family=binomial())
+m6 <- glm(implement4~ business, data=subset(respog, dimension==0),family=binomial())
+
+m1 <- tidy(m1, conf.int = TRUE) %>% filter(term == "unskilled") %>%
+  mutate(model = "Unskilled\nworkers")
+m2 <- tidy(m2, conf.int = TRUE) %>% filter(term == "skilled") %>%
+  mutate(model = "Skilled\nWorkers")
+m3 <- tidy(m3, conf.int = TRUE) %>% filter(term == "emplow") %>%
+  mutate(model = "Lower-grade\nemployees")
+m4 <- tidy(m4, conf.int = TRUE) %>% filter(term == "emphigh") %>%
+  mutate(model = "Higher-grade\nemployees")
+m5 <- tidy(m5, conf.int = TRUE) %>% filter(term == "civilserv") %>%
+  mutate(model = "Civil\nservants")
+m6 <- tidy(m6, conf.int = TRUE) %>% filter(term == "business") %>%
+  mutate(model = "Business\nowners")
+
+all_models <- bind_rows(m1, m2, m3, m4, m5, m6)
+all_models <- all_models %>% mutate(id = row_number())
+all_models$id <- as.factor(all_models$id)
+all_models$id <- factor(all_models$id,
+levels = c(1,2,3,4,5,6),
+labels = c("Unskilled\nworkers", "Skilled\nworkers", "Lower-grade\nemployees", "Higher-grade\nemployees", "Civil\nservants", "Business\nowners")) 
+
+
+occdim1 <- all_models %>%
+  mutate(model = fct_reorder(id, estimate)) %>%
+  ggplot()+
+  geom_vline(xintercept=0, color="grey60")+
+  geom_point(aes(x=estimate, y=model), size=2)+
+  geom_errorbarh(aes(y=model, 
+                     xmin=conf.low, 
+                     xmax=conf.high,
+                     height = 0))+
+  xlim(-2,4)+
+  labs(title="State vs. market", x="", y="")+
+  theme_minimal()+
+  theme(axis.text = element_text(color = "black"))
+
+# Dimension = 2 - cultural axis
+
+m1 <- glm(implement4~ unskilled, data=subset(respog, dimension==1),family=binomial())
+m2 <- glm(implement4~ skilled, data=subset(respog, dimension==1),family=binomial())
+m3 <- glm(implement4~ emplow, data=subset(respog, dimension==1),family=binomial())
+m4 <- glm(implement4~ emphigh, data=subset(respog, dimension==1),family=binomial())
+m5 <- glm(implement4~ civilserv, data=subset(respog, dimension==1),family=binomial())
+m6 <- glm(implement4~ business, data=subset(respog, dimension==1),family=binomial())
+
+m1 <- tidy(m1, conf.int = TRUE) %>% filter(term == "unskilled") %>%
+  mutate(model = "Unskilled\nworkers")
+m2 <- tidy(m2, conf.int = TRUE) %>% filter(term == "skilled") %>%
+  mutate(model = "Skilled\nWorkers")
+m3 <- tidy(m3, conf.int = TRUE) %>% filter(term == "emplow") %>%
+  mutate(model = "Lower-grade\nemployees")
+m4 <- tidy(m4, conf.int = TRUE) %>% filter(term == "emphigh") %>%
+  mutate(model = "Higher-grade\nemployees")
+m5 <- tidy(m5, conf.int = TRUE) %>% filter(term == "civilserv") %>%
+  mutate(model = "Civil\nservants")
+m6 <- tidy(m6, conf.int = TRUE) %>% filter(term == "business") %>%
+  mutate(model = "Business\nowners")
+
+all_models <- bind_rows(m1, m2, m3, m4, m5, m6)
+all_models <- all_models %>% mutate(id = row_number())
+all_models$id <- as.factor(all_models$id)
+all_models$id <- factor(all_models$id,
+levels = c(1,2,3,4,5,6),
+labels = c("Unskilled\nworkers", "Skilled\nworkers", "Lower-grade\nemployees", "Higher-grade\nemployees", "Civil\nservants", "Business\nowners")) 
+
+
+occdim2 <- all_models %>%
+  mutate(model = fct_reorder(id, estimate)) %>%
+  ggplot()+
+  geom_vline(xintercept=0, color="grey60")+
+  geom_point(aes(x=estimate, y=model), size=2)+
+  geom_errorbarh(aes(y=model, 
+                     xmin=conf.low, 
+                     xmax=conf.high,
+                     height = 0))+
+  xlim(-2,4)+
+  labs(title="Particularism vs. universalism", x="", y="")+
+  theme_minimal()+
+  theme(axis.text = element_text(color = "black"))
+
+# Economic dimension
+m1 <- glm(implement4~ edulow, data=subset(respog, dimension==0),family=binomial())
+m2 <- glm(implement4~ edumed, data=subset(respog, dimension==0),family=binomial())
+m3 <- glm(implement4~ eduhigh, data=subset(respog, dimension==0),family=binomial())
+
+m1 <- tidy(m1, conf.int = TRUE) %>% filter(term == "edulow") %>%
+  mutate(model = "Low")
+m2 <- tidy(m2, conf.int = TRUE) %>% filter(term == "edumed") %>%
+  mutate(model = "Medium")
+m3 <- tidy(m3, conf.int = TRUE) %>% filter(term == "eduhigh") %>%
+  mutate(model = "High")
+
+all_models <- bind_rows(m1, m2, m3)
+all_models <- all_models %>% mutate(id = row_number())
+all_models$id <- as.factor(all_models$id)
+all_models$id <- factor(all_models$id,
+levels = c(1,2,3),
+labels = c("Low\neducation", "Medium\neducation",
+           "High\neducation")) 
+
+
+educdim1 <- all_models %>%
+  mutate(model = fct_reorder(id, estimate)) %>%
+  ggplot()+
+  geom_vline(xintercept=0, color="grey60")+
+  geom_point(aes(x=estimate, y=model), size=2)+
+  geom_errorbarh(aes(y=model, 
+                     xmin=conf.low, 
+                     xmax=conf.high,
+                     height = 0))+
+  xlim(-2,4)+
+  labs(title="State vs. market", x="", y="")+
+  theme_minimal()+
+  theme(axis.text = element_text(color = "black"))
+
+# Cultural dimension
+m1 <- glm(implement4~ edulow, data=subset(respog, dimension==1),family=binomial())
+m2 <- glm(implement4~ edumed, data=subset(respog, dimension==1),family=binomial())
+m3 <- glm(implement4~ eduhigh, data=subset(respog, dimension==1),family=binomial())
+
+m1 <- tidy(m1, conf.int = TRUE) %>% filter(term == "edulow") %>%
+  mutate(model = "Low")
+m2 <- tidy(m2, conf.int = TRUE) %>% filter(term == "edumed") %>%
+  mutate(model = "Medium")
+m3 <- tidy(m3, conf.int = TRUE) %>% filter(term == "eduhigh") %>%
+  mutate(model = "High")
+
+all_models <- bind_rows(m1, m2, m3)
+all_models <- all_models %>% mutate(id = row_number())
+all_models$id <- as.factor(all_models$id)
+all_models$id <- factor(all_models$id,
+levels = c(1,2,3),
+labels = c("Low\neducation",
+           "Medium\neducation", 
+           "High\neducation")) 
+
+
+educdim2 <- all_models %>%
+  mutate(model = fct_relevel(model, "Low", "Medium", "High")) %>%
+  ggplot()+
+  geom_vline(xintercept=0, color="grey60")+
+  geom_point(aes(x=estimate, y=model), size=2)+
+  geom_errorbarh(aes(y=model, 
+                     xmin=conf.low, 
+                     xmax=conf.high,
+                     height = 0))+
+  xlim(-2,4)+
+  labs(title="Particularism vs. universalism", x="", y="")+
+  theme_minimal()+
+  theme(axis.text = element_text(color = "black"))
+
+(occdim1 + occdim2)/(educdim1 + educdim2)
+
+
+```
+
+# Appendix
+
+In what follows, we document the plots and tables of the online appendix of the paper.
+
+## Figure A-1
+
+Figure A-1 shows the number of questions and the governing coalition at the time.
+
+```{r a1,  fig.width=8, fig.cap="Number of questions per year and coalition government."}
+
+(figure_a1 <- respog %>%
+  filter(!is.na(coalition)) %>%
+  ggplot(aes(x=year, fill=coalition))+
+  geom_bar()+
+  labs(x=NULL, y=NULL)+
+  theme_minimal()+
+  theme(legend.title=element_blank(),
+        legend.position="top",
+        axis.text = element_text(color="black"),
+        legend.text = element_text(size = 8),
+        legend.key.size=unit(.4, "cm"),
+        panel.grid.major = element_line(size = 0.2))+
+  scale_fill_manual(values=c("black", "grey70", "grey40", "grey80")))
+
+```
+
+## Table A-1
+
+Table A-1 in the Appendix of the paper displays the number of questions per policy field.
+
+```{r tableA1, echo=FALSE}
+
+respog %>%
+  group_by(field) %>%
+  summarise(n = n()) %>%
+  mutate(freq = n / sum(n)) %>%
+  kable(digits = 2,
+         caption  = "Number of questions per policy field") %>%
+  kable_styling(bootstrap_options = "striped",
+                font_size=12)
+
+```
+
+## Table A-2
+
+Table A-2 in the Appendix of the paper documents the number of questions, in which two social groups hold opposing interest. The first table cross-tabulates unskilled workers and business owners, the second one repondents with low and high levels of education.
+
+```{r tableA2, echo=FALSE}
+
+respog %>%
+  group_by(field) %>%
+  filter(oppo_wrk_busi==1)%>%
+  summarise(n = n()) %>%
+  mutate(freq = n / sum(n)) %>%
+  kable(digits = 2,
+         caption  = "Number of questions where unskilled workers and business owners hold opposing interests") %>%
+  kable_styling(bootstrap_options = "striped", 
+                font_size = 12)
+
+
+respog %>%
+  group_by(field) %>%
+  filter(oppo_edu==1)%>%
+  summarise(n = n()) %>%
+  mutate(freq = n / sum(n)) %>%
+  kable(digits = 2,
+         caption  = "Number of questions where respondents with low and high levels of education hold opposing interests") %>%
+  kable_styling(bootstrap_options = "striped", 
+                font_size = 12)
+
+```
+
+
+## Figure A-2
+
+Figure A-2 shows the absolute and relative number of questions that were implemented, subdivided by policy dimension. 
+
+```{r a2, fig.width=10, fig.cap="Absolute and relative number of questions by policy dimension."}
+
+# Absolut numbers
+imptotal <- respog %>% 
+  drop_na(dim, imp4) %>%
+  group_by(dim, imp4) %>%
+  summarise(number = n()) %>%
+  ggplot(aes(x = reorder(dim, -number),
+             y = number, fill=imp4))+ 
+  geom_bar(stat = "identity", width=.5)+
+  labs(y="Absolute numbers", x="")+
+  coord_flip()+
+  scale_x_discrete(labels = scales::wrap_format(20))+
+  theme_minimal()+
+  theme(legend.title=element_blank(),
+        legend.position="top",
+        axis.text = element_text(color="black"))+
+    scale_fill_manual(breaks=c("implemented", "not implemented"),
+    values = c("grey70", "grey40"))
+
+# Relative numbers
+imprel <- respog %>%
+  drop_na(dim, imp4) %>%
+  group_by(dim, imp4) %>%
+  summarise(number = n()) %>%
+  ggplot(aes(x = reorder(dim, -number), 
+             y = number, fill=imp4))+ 
+  geom_bar(stat="identity", position="fill", width=.5)+
+  labs(x="", y="Percentage implemented")+
+  coord_flip()+
+  scale_x_discrete(labels = scales::wrap_format(20))+
+  scale_y_continuous(labels=scales::percent)+
+  theme_minimal()+
+  theme(legend.title=element_blank(),
+        legend.position="top",
+        axis.text = element_text(color = "black"))+
+  scale_fill_manual(breaks=c("implemented", 
+                             "not implemented"),
+                    values = c("grey70", "grey40"))
+
+
+# Combine graphs
+ggarrange(imptotal, imprel,
+          common.legend=TRUE, 
+          legend="right")
+
+```
+
+
+## Figure A-3
+
+Over time, many more citizens in Germany have acquired higher levels of education. *Figure A-3* compares the educational composition of occupational groups in the first and the last year of our analyses, 1980 and 2013. It mirrors the trend of an increase in average education in Europe over the last decades. However, clear differences remain: a majority of unskilled workers still comes from the group with lowest education, whereas higher-grade employees, business owners and civil servants comprised the highest share of highly-educated back then and now.
+
+```{r figA3, fig.width=10, fig.cap="Share of educational levels by occupation, 1980 and 2013. Data: Politbarometer."}
+
+groupsize$occupation <- factor(groupsize$occupation,
+                                levels=c(1:6),
+                                labels=c("Unskilled Workers", 
+                                        "Skilled Workers",
+                                        "Lower-grade Employees", 
+                                        "Higher-grade Employees", 
+                                        "Civil Servants", 
+                                        "Business Owners"))
+                           
+groupsize$year <- as.factor(groupsize$year)
+
+groupsize$educ <- factor(groupsize$educ,
+                         levels = c(1:3),
+                         labels = c("1"="Low",
+                                    "2"="Medium", 
+                                    "3"="High"))
+
+ggplot(data = groupsize, aes(year, share)) + 
+  geom_col(aes(fill= fct_rev(educ)), width = 0.5)+
+  facet_wrap(~occupation)+
+  scale_fill_grey(name= "Education", labels =c("High", "Medium", "Low"))+
+  theme_minimal()+
+  theme(axis.text = element_text(colour="black"),
+        axis.title = element_blank())
+
+```
+## Figure A-4
+
+In our dataset, income is only available for a subset of questions. However, social class and income correlate strongly because the highest occupational groups are also those with the highest average income, as *Figure A-4* shows. Differences between occupational groups are pretty stable over time---even though lower groups experience a relative decline over time.
+
+```{r figA4, fig.width=8, fig.cap="Income percentiles per group. Data: DeutschlandTrend, 1998-2013"}
+
+ggplot(data = inc_occ, aes(x = year, 
+                           y = percentile,
+                           group=occup))+
+  geom_line(aes(linetype = occup))+
+  labs(linetype= NULL,
+       x = NULL,
+       y = "Income percentile")+
+  ylim(0,100)+
+  theme_minimal()+
+  theme(axis.text = element_text(color="black"),
+        axis.title = element_text(face = "bold"))
+
+```
+
+
+## Table A-4
+
+Regression models for **social class**:
+
+```{r tableA4, results='asis'}
+
+mod <- list()
+mod[["Unskilled"]] <- glm(implement4~ unskilled, data=respog,family=binomial())
+mod[["Skilled"]] <- glm(implement4~ skilled, data=respog,family=binomial())
+mod[["Lower-grade employees"]] <- glm(implement4~ emplow, data=respog,family=binomial())
+mod[["Higher-grade employees"]] <- glm(implement4~ emphigh, data=respog,family=binomial())
+mod[["Civil servants"]] <- glm(implement4~ civilserv, data=respog,family=binomial())
+mod[["Business owners"]] <- glm(implement4~ business, data=respog,family=binomial())
+
+cm <- c('unskilled' = 'Logit coefficient',
+        'skilled' = 'Logit coefficient',
+        'emplow' = 'Logit coefficient',
+        'emphigh' = 'Logit coefficient',
+        'civilserv' = 'Logit coefficient',
+        'business' = 'Logit coefficient',
+        '(Intercept)' = 'Intercept')
+modelsummary(mod, title = 'Impact of preferences on policy change for social class',
+        output='gt',
+         stars = TRUE,
+         statistic = c('std.error'),
+         gof_omit = 'DF|Deviance|R2|AIC|BIC',
+         coef_map = cm,
+         note="Cases consist of survey questions about proposed policy changes asked between 1980 and 2013. The dependent variable is policy outcome, coded 1 if the proposed policy took place within four years of the survey data and 0 if it did not. The predictors are the percentage of each group favoring policy change.") %>%
+  tab_options(table.font.size = 12,
+              table.width = pct(60))
+
+
+```
+
+
+## Table A-5
+
+Regression models for **education groups**:
+```{r tableA5}
+
+
+mod <- list()
+mod[["Low education"]] <- glm(implement4~ edulow, data=respog,family=binomial())
+mod[["Medium education"]] <- glm(implement4~ edumed, data=respog,family=binomial())
+mod[["High education"]] <- glm(implement4~ eduhigh, data=respog,family=binomial())
+
+cm <- c('edulow' = 'Logit coefficient',
+        'edumed' = 'Logit coefficient',
+        'eduhigh' = 'Logit coefficient',
+        '(Intercept)' = 'Intercept')
+
+modelsummary(mod, title = 'Impact of preferences on policy change for education groups',
+        output='gt',
+         stars = TRUE,
+         statistic = c('std.error'),
+         gof_omit = 'DF|Deviance|R2|AIC|BIC',
+         coef_map = cm,
+         note="Cases consist of survey questions about proposed policy changes asked between 1980 and 2013. The dependent variable is policy outcome, coded 1 if the proposed policy took place within four years of the survey data and 0 if it did not. The predictors are the percentage of each group favoring policy change.") %>%
+  tab_options(table.font.size = 12,
+              table.width = pct(60))
+
+
+```
+
+
+## Figure A-5
+
+```{r figA5,  results='hide', fig.width=10, fig.cap="Predicted probability of policy change"}
+
+datunsk <- glm(implement4~ unskilled, data=respog,family=binomial())
+datbo <- glm(implement4~ business, data=respog,family=binomial())
+datael <- glm(implement4~ edulow, data=respog,family=binomial())
+dataeh <- glm(implement4~ eduhigh, data=respog,family=binomial())
+
+pred1 <- cplot(datunsk, "unskilled", draw = FALSE)
+pred2 <- cplot(datbo, "business", draw = FALSE)
+pred3 <- cplot(datael, "edulow", draw = FALSE)
+pred4 <- cplot(dataeh, "eduhigh", draw = FALSE)
+
+pp1 <- ggplot()+
+  geom_ribbon(data = pred1, aes(x = xvals, y = yvals,
+                                ymin = lower,
+                                ymax = upper), 
+              fill="grey80", alpha=0.4)+
+  geom_line(data = pred1, aes(x = xvals, y = yvals, 
+                              linetype="Unskilled Workers"))+
+  geom_ribbon(data = pred2, aes(x = xvals, y = yvals,
+                                ymin = lower,
+                                ymax = upper), 
+              fill="grey80", alpha=0.4)+
+  geom_line(data = pred2, aes(x = xvals, y = yvals,
+                              linetype = "Business owners"))+
+  labs(linetype=NULL,
+       x = "Percentage favoring change",
+       y = "Predicted probability")+
+  scale_x_continuous(labels = scales::percent)+
+  ylim(0,1)+
+  theme_minimal()+
+  theme(axis.text = element_text(color = "black"),
+        axis.title = element_text(face = "bold"),
+        legend.position = "top")
+
+
+pp2 <- ggplot()+
+  geom_ribbon(data = pred3, aes(x = xvals, y = yvals,
+                                ymin = lower,
+                                ymax = upper), 
+              fill="grey80", alpha=0.4)+
+  geom_line(data = pred3, aes(x = xvals, y = yvals, 
+                              linetype="Low education"))+
+  geom_ribbon(data = pred4, aes(x = xvals, y = yvals,
+                                ymin = lower,
+                                ymax = upper), 
+              fill="grey80", alpha=0.4)+
+  geom_line(data = pred4, aes(x = xvals, y = yvals,
+                              linetype = "High education"))+
+  labs(linetype=NULL,
+       x = "Percentage favoring change",
+       y = "Predicted probability")+
+  scale_x_continuous(labels = scales::percent)+
+  ylim(0,1)+
+  theme_minimal()+
+  theme(axis.text = element_text(color = "black"),
+        axis.title = element_text(face = "bold"),
+        legend.position = "top")
+
+pp1 + pp2
+
+```
+
+
+## Table A-6
+
+Regression models for **income groups**:
+```{r tableA6}
+
+mod <- list()
+mod[["1st"]] <-  glm(implement4~ incperc01, data=respog,family=binomial())
+mod[["10th"]] <- glm(implement4~ incperc10, data=respog,family=binomial())
+mod[["50th"]] <- glm(implement4~ incperc50, data=respog,family=binomial())
+mod[["90th"]] <- glm(implement4~ incperc90, data=respog,family=binomial())
+mod[["99th"]] <- glm(implement4~ incperc99, data=respog,family=binomial())
+
+cm <- c('incperc01' = 'Logit coefficient',
+        'incperc10' = 'Logit coefficient',
+        'incperc50' = 'Logit coefficient',
+        'incperc90' = 'Logit coefficient',
+        'incperc99' = 'Logit coefficient',
+        '(Intercept)' = 'Intercept')
+
+msummary(mod, title = 'Impact of preferences on policy change for income groups',
+         output = 'gt',
+         stars = TRUE,
+         statistic = c('std.error'),
+         gof_omit = 'DF|Deviance|R2|AIC|BIC',
+         coef_map = cm,
+         note="Cases consist of survey questions about proposed policy changes asked between 1980 and 2013. The dependent variable is policy outcome, coded 1 if the proposed policy took place within four years of the survey data and 0 if it did not. The predictors are the percentage of each group favoring policy change.") %>%
+  tab_options(table.font.size = 12,
+              table.width = pct(60))
+
+```
+
+## Table A-7
+
+Interaction of preferences for policy change and opinion differences.
+
+```{r tableA7}
+
+mod <- list()
+mod[["Unskilled workers"]] <-  glm(implement4~ unskilled * diff_class, data = respog, family=binomial(link="logit"))
+mod[["Low education"]] <- glm(implement4~ edulow * diff_edu, data = respog, family=binomial(link="logit"))
+
+
+cm <- c('unskilled' = 'Coefficient',
+        'diff_class' = 'Difference',
+        'unskilled:diff_class' = 'Interaction',
+        '(Intercept)' = 'Intercept',
+        'edulow' = 'Coefficient',
+        'diff_edu' = 'Difference',
+        'edulow:diff_edu' = 'Interaction')
+        
+modelsummary(mod, title = 'Impact of preferences on policy change - depending on opinion differences',
+         output='gt',
+         stars = TRUE,
+         statistic = c('std.error'),
+         gof_omit = 'DF|Deviance|R2|AIC|BIC',
+         coef_map = cm,
+         note="This table shows the coefficients of a logistic regression model that interacts the support for policy change with opinion differences. For unskilled workers the opinion differences is measured against the preferences of business owners, for respondents with low levels of education it taps the opinion differences to those with high education.") %>%
+  tab_options(table.font.size = 12,
+              table.width = pct(60))
+
+```
+
+## Table A-8
+
+```{r tableA8}
+
+
+mod1 <- list()
+
+mod1[["Unskilled1"]] <- glm(implement4~ unskilled, data=subset(respog, dimension==0), family=binomial())
+mod1[["Skilled1"]] <- glm(implement4~ skilled, data=subset(respog, dimension==0), family=binomial())
+mod1[["Lower-grade employees1"]] <- glm(implement4~ emplow, data=subset(respog, dimension==0), family=binomial())
+mod1[["Higher-grade employees1"]] <- glm(implement4~ emphigh, data=subset(respog, dimension==0), family=binomial())
+mod1[["Civil servants1"]] <- glm(implement4~ civilserv, data=subset(respog, dimension==0), family=binomial())
+mod1[["Business owners1"]] <- glm(implement4~ business, data=subset(respog, dimension==0), family=binomial())
+
+mod2 <- list()
+mod2[["Unskilled"]] <- glm(implement4~ unskilled, data=subset(respog, dimension==1), family=binomial())
+mod2[["Skilled"]] <- glm(implement4~ skilled, data=subset(respog, dimension==1), family=binomial())
+mod2[["Lower-grade employees"]] <- glm(implement4~ emplow, data=subset(respog, dimension==1), family=binomial())
+mod2[["Higher-grade employees"]] <- glm(implement4~ emphigh, data=subset(respog, dimension==1), family=binomial())
+mod2[["Civil servants"]] <- glm(implement4~ civilserv, data=subset(respog, dimension==1), family=binomial())
+mod2[["Business owners"]] <- glm(implement4~ business, data=subset(respog, dimension==1), family=binomial())
+
+cm <- c('unskilled' = 'Logit coefficient',
+        'skilled' = 'Logit coefficient',
+        'emplow' = 'Logit coefficient',
+        'emphigh' = 'Logit coefficient',
+        'civilserv' = 'Logit coefficient',
+        'business' = 'Logit coefficient',
+        '(Intercept)' = 'Intercept')
+
+modelsummary(mod1, title = 'Responsiveness in two policy dimensions',
+        output='gt',
+         stars = TRUE,
+         statistic = c('std.error'),
+         gof_omit = 'DF|Deviance|R2|AIC|BIC',
+         coef_map = cm) %>%
+  tab_options(table.font.size = 12,
+              table.width = pct(60)) %>%
+  tab_spanner(label = 'State vs market', columns = 2:7)
+
+modelsummary(mod2,
+        output='gt',
+         stars = TRUE,
+         statistic = c('std.error'),
+         gof_omit = 'DF|Deviance|R2|AIC|BIC',
+         coef_map = cm,
+         note="Cases consist of survey questions about proposed policy changes asked between 1980 and 2013. The dependent variable is policy outcome, coded 1 if the proposed policy took place within four years of the survey data and 0 if it did not. The predictors are the percentage of each group favoring policy change.") %>%
+  tab_options(table.font.size = 12,
+              table.width = pct(60)) %>%
+  tab_spanner(label = 'Particularism vs universalism', columns = 2:7)
+
+```
+
+
+## Table A-9
+
+```{r tableA9, results='asis'}
+
+
+respog$coa <- ifelse(respog$coalition=="SPD-FDP", NA, respog$coalition)
+respog$coa <- factor(respog$coa,
+                     levels = c(1,2,3),
+                     labels = c("CDU/CSU-FDP", 
+                                "SPD-Greens",
+                                "CDU/CSU-SPD"))
+
+## Eliminate pre-election years 
+respog2 <- respog %>%
+  filter(!year %in% c(1997,2004,2012))
+
+mod <- list()
+mod[["Unskilled"]] <- glm(implement2~ unskilled*dimension + unskilled*coa + survinst, 
+                          data=respog2,
+                          family=binomial())
+mod[["Skilled"]] <- glm(implement2~ skilled*dimension + skilled*coa + survinst,
+                        data=respog2,
+                        family=binomial())
+mod[["Lower-grade employee"]] <- glm(implement2~ emplow*dimension + emplow*coa + survinst, 
+                                     data=respog2,
+                                     family=binomial())
+mod[["Higher-grade employee"]] <- glm(implement2~ emphigh*dimension + emphigh*coa + survinst, 
+                                      data=respog2,
+                                      family=binomial())
+mod[["Civil servants"]] <- glm(implement2~ civilserv*dimension + civilserv*coa + survinst, 
+                               data=respog2,
+                               family=binomial())
+mod[["Business owners"]] <- glm(implement2~ business*dimension + business*coa + survinst, 
+                                data=respog2,
+                                family=binomial())
+
+
+cm <- c('unskilled' = 'Class',
+        'skilled' = 'Class',
+        'emplow' = 'Class',
+        'emphigh' = 'Class',
+        'civilserv' = 'Class',
+        'business' = 'Class',
+        'coaCDU/CSU-FDP' = 'CDU/CSU-FDP',
+        'coaSPD-Greens' = 'SPD-Greens',
+        'coaCDU/CSU-SPD' = 'CDU/CSU-SPD',
+        'dimension' = 'Policy dimension',
+        'survinst' = 'Survey institute',
+        'unskilled:coaCDU/CSU-SPD' = 'Class * CDU/CSU-SPD',
+        'unskilled:coaSPD-Greens' = 'Class * SPD-Greens',
+        'skilled:coaCDU/CSU-SPD' = 'Class * CDU/CSU-SPD',
+        'skilled:coaSPD-Greens' = 'Class * SPD-Greens',
+        'emplow:coaCDU/CSU-SPD' = 'Class * CDU/CSU-SPD',
+        'emplow:coaSPD-Greens' = 'Class * SPD-Greens',
+        'emphigh:coaCDU/CSU-SPD' = 'Class * CDU/CSU-SPD',
+        'emphigh:coaSPD-Greens' = 'Class * SPD-Greens',
+        'civilserv:coaCDU/CSU-SPD' = 'Class * CDU/CSU-SPD',
+        'civilserv:coaSPD-Greens' = 'Class * SPD-Greens',
+        'business:coaCDU/CSU-SPD' = 'Class * CDU/CSU-SPD',
+        'business:coaSPD-Greens' = 'Class * SPD-Greens',
+        'unskilled:dimension' = 'Class * dimension',
+        'skilled:dimension' = 'Class * dimension',
+        'emplow:dimension' = 'Class * dimension',
+        'emphigh:dimension' = 'Class * dimension',
+        'civilserv:dimension' = 'Class * dimension',
+        'business:dimension' = 'Class * dimension',
+        '(Intercept)' = 'Intercept')
+
+
+modelsummary(mod, title = 'Impact of preferences on policy change - two interactions',
+         output='gt',
+         stars = TRUE,
+         statistic = c('std.error'),
+         gof_omit = 'DF|Deviance|R2|AIC|BIC',
+         coef_map = cm,
+         note="Cases consist of survey questions about proposed policy changes asked between 1980 and 2013. The dependent variable is policy outcome, coded 1 if the proposed policy took place within two years of the survey data and 0 if it did not. The predictors are the percentage of each group favoring policy change.") %>%
+  tab_options(table.font.size = 12,
+              table.width = pct(60))
+
+```
+
+
+## Figure A-6
+
+In the final step of the analysis, we ask if government coalitions differ in the degree of responsiveness. To measure this as precisely as possible, we use the two-year period of implementation and exclude years prior to a general election. In our dataset, the year refers to the year in which the question was asked. As we cover the two subsequent years, this means that a change in the government coalition might take place. Elections in Germany usually take place in September and the new government starts working in the subsequent year. Hence, we exclude 1997 (because in 1998 a conservative-liberal government was in office but in 1999 a red-green coalition), 2004 and 2012.
+
+```{r figA6, fig.width=10}
+
+## Eliminate pre-election years 
+respog2 <- respog %>%
+  filter(!year %in% c(1997,2004,2012))
+
+
+t1 <- glm(implement2~ unskilled*dimension + unskilled*coa + survinst, data=respog2, family=binomial())
+t2 <- glm(implement2~ skilled*dimension + skilled*coa + survinst, data=respog2, family=binomial())
+t3 <- glm(implement2~ emplow*dimension + emplow*coa + survinst, data=respog2, family=binomial())
+t4 <- glm(implement2~ emphigh*dimension + emphigh*coa + survinst, data=respog2, family=binomial())
+t5 <- glm(implement2~ civilserv*dimension + civilserv*coa + survinst, data=respog2, family=binomial())
+t6 <- glm(implement2~ business*dimension + business*coa + survinst, data=respog2, family=binomial())
+
+data1 <- ggpredict(t1, terms = c("unskilled [0:1 by=0.05]", "coa")) 
+data2 <- ggpredict(t2, terms = c("skilled [0:1 by=0.05]", "coa")) 
+data3 <- ggpredict(t3, terms = c("emplow [0:1 by=0.05]", "coa")) 
+data4 <- ggpredict(t4, terms = c("emphigh [0:1 by=0.05]", "coa")) 
+data5 <- ggpredict(t5, terms = c("civilserv [0:1 by=0.05]", "coa")) 
+data6 <- ggpredict(t6, terms = c("business [0:1 by=0.05]", "coa")) 
+
+
+p1 <- ggplot(data = data1, aes(x = x, y = predicted, 
+                           group=group))+
+  geom_ribbon(aes(ymin = conf.low, ymax = conf.high),
+              fill="grey70",
+              alpha=0.3)+
+  geom_line(aes(linetype=group))+
+  scale_x_continuous(labels = scales::percent,
+                     limits = c(0, 1))+
+  ylim(0,1)+
+  labs(title = "Unskilled",
+       alpha = NULL,
+       group = NULL,
+       linetype = NULL)+
+  theme_minimal()+
+  theme(axis.text = element_text(color = "black", size=8),
+        axis.title = element_blank(),
+        title = element_text(size=8, face = "bold"))
+
+p2 <- ggplot(data = data2, aes(x = x, y = predicted, 
+                           group=group))+
+  geom_ribbon(aes(ymin = conf.low, ymax = conf.high),
+              fill="grey70",
+              alpha=0.3)+
+  geom_line(aes(linetype=group))+
+  scale_x_continuous(labels = scales::percent,
+                     limits = c(0, 1))+
+  ylim(0,1)+
+  labs(title = "Skilled",
+       y = "Predicted probability",
+       x = "Support for policy change",
+       alpha = NULL,
+       group = NULL,
+       linetype = NULL)+
+  theme_minimal()+
+  theme(axis.text = element_text(color = "black", size=8),
+        axis.title = element_blank(),
+        title = element_text(size=8, face = "bold"))
+
+p3 <- ggplot(data = data3, aes(x = x, y = predicted, 
+                           group=group))+
+  geom_ribbon(aes(ymin = conf.low, ymax = conf.high),
+              fill="grey70",
+              alpha=0.3)+
+  geom_line(aes(linetype=group))+
+  scale_x_continuous(labels = scales::percent,
+                     limits = c(0, 1))+
+  ylim(0,1)+
+  labs(title = "Lower employees",
+       alpha = NULL,
+       group = NULL,
+       linetype = NULL)+
+  theme_minimal()+
+  theme(axis.text = element_text(color = "black", size=8),
+        axis.title = element_blank(),
+        title = element_text(size=8, face = "bold"))
+
+p4 <- ggplot(data = data4, aes(x = x, y = predicted, 
+                           group=group))+
+  geom_ribbon(aes(ymin = conf.low, ymax = conf.high),
+              fill="grey70",
+              alpha=0.3)+
+  geom_line(aes(linetype=group))+
+  scale_x_continuous(labels = scales::percent,
+                     limits = c(0, 1))+
+  ylim(0,1)+
+  labs(title = "Higher employees",
+       alpha = NULL,
+       group = NULL,
+       linetype = NULL)+
+  theme_minimal()+
+  theme(axis.text = element_text(color = "black", size=8),
+        axis.title = element_blank(),
+        title = element_text(size=8, face = "bold"))
+
+
+p5 <- ggplot(data = data5, aes(x = x, y = predicted, 
+                           group=group))+
+  geom_ribbon(aes(ymin = conf.low, ymax = conf.high),
+              fill="grey70",
+              alpha=0.3)+
+  geom_line(aes(linetype=group))+
+  scale_x_continuous(labels = scales::percent,
+                     limits = c(0, 1))+
+  ylim(0,1)+
+  labs(title = "Civil servants",
+       alpha = NULL,
+       group = NULL,
+       linetype = NULL)+
+  theme_minimal()+
+  theme(axis.text = element_text(color = "black", size=8),
+        axis.title = element_blank(),
+        title = element_text(size=8, face = "bold"))
+
+p6 <- ggplot(data = data6, aes(x = x, y = predicted, 
+                           group=group))+
+  geom_ribbon(aes(ymin = conf.low, ymax = conf.high),
+              fill="grey70",
+              alpha=0.3)+
+  geom_line(aes(linetype=group))+
+  scale_x_continuous(labels = scales::percent,
+                     limits = c(0, 1))+
+  ylim(0,1)+
+  labs(title= "Business owners",
+       alpha = NULL,
+       group = NULL,
+       linetype = NULL)+
+  theme_minimal()+
+  theme(axis.text = element_text(color = "black", size=8),
+        axis.title = element_blank(),
+        title = element_text(size=8, face = "bold"))
+
+figure <- ggarrange(p1, p2, p3, p4, p5, p6, common.legend = TRUE)
+annotate_figure(figure,
+               bottom = text_grob("Support for policy change", 
+                                  face = "bold", size = 10),
+               left = text_grob("Predicted probability", rot = 90,
+                                face = "bold", size = 10))
+
+```
+
